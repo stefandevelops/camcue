@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #eef3f1;
+  --ink: #102018;
+  --muted: #5b6b63;
+  --line: #cfdad4;
+  --card: #ffffff;
+  --accent: #0f766e;
+  --warn: #b45309;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+}
+
+body {
+  min-height: 100%;
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(15, 118, 110, 0.14), transparent 30%),
+    radial-gradient(circle at 90% 10%, rgba(180, 83, 9, 0.08), transparent 26%),
+    var(--bg);
+}
+
+.camcue-marker {
+  background: transparent;
+  border: none;
+}
+
+.leaflet-container {
+  font: inherit;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
