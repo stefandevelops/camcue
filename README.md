@@ -6,9 +6,14 @@
 
 ## Data sources
 
-- **Fixed cameras:** OpenStreetMap via the Overpass API (`highway=speed_camera`)
+- **Fixed cameras:** OpenStreetMap (`highway=speed_camera`)
+  - Bundled Brussels extract in `public/data/` (same-origin — works on GitHub Pages)
+  - Live Overpass mirrors when the browser can reach them
+  - Tiny seed set if both are unavailable
 - **Map tiles:** OpenStreetMap
 - **Mobile vans:** local reports saved in your browser (no account)
+
+Google Maps / Waze do not expose a public speed-camera API for third-party apps, so CamCue uses OpenStreetMap + your own van marks instead.
 
 ## Features
 

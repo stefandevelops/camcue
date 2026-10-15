@@ -17,8 +17,8 @@ import {
 } from "@/lib/alerts";
 import { formatDistance, msToKmh, type LatLng } from "@/lib/geo";
 
-/** Brussels center — dense OSM camera coverage for try-without-GPS demos. */
-const DEMO_CENTER: LatLng = { lat: 50.8503, lng: 4.3517 };
+/** Brussels — start ~350 m west of a dense OSM camera cluster so the demo hits alerts fast. */
+const DEMO_CENTER: LatLng = { lat: 50.82594, lng: 4.39195 };
 
 const DriveMap = dynamic(
   () => import("@/components/drive-map").then((m) => m.DriveMap),
@@ -151,7 +151,7 @@ export function CamCueApp() {
     setDemoMode(true);
     setStatus("live");
     setError("");
-    setHeading(95);
+    setHeading(90);
     setSpeedKmh(58);
     setPosition(DEMO_CENTER);
     void refreshCameras(DEMO_CENTER, true);
@@ -159,16 +159,16 @@ export function CamCueApp() {
     let step = 0;
     demoTimerRef.current = window.setInterval(() => {
       step += 1;
-      // Drift east so nearby OSM cameras move through alert bands.
+      // Drift east toward the camera cluster (~350 m ahead at start).
       const next = {
-        lat: DEMO_CENTER.lat + Math.sin(step / 18) * 0.0012,
-        lng: DEMO_CENTER.lng + step * 0.00022,
+        lat: DEMO_CENTER.lat + Math.sin(step / 20) * 0.0004,
+        lng: DEMO_CENTER.lng + step * 0.00018,
       };
       setPosition(next);
       setSpeedKmh(48 + (step % 7) * 3);
-      setHeading(90 + Math.sin(step / 10) * 8);
+      setHeading(90 + Math.sin(step / 10) * 6);
       void refreshCameras(next);
-    }, 1800);
+    }, 1600);
   }
 
   function startTracking() {
@@ -380,8 +380,19 @@ export function CamCueApp() {
             <p className="mt-1 text-sm text-[var(--muted)]">
               {loadingCams
                 ? "Loading fixed cameras from OpenStreetMap…"
-                : `${fixedCams.length} fixed · ${vanCams.length} vans`}
+                : `${fixedCams.filter((c) => c.kind === "fixed").length} fixed · ${
+                    fixedCams.filter((c) => c.kind === "van").length + vanCams.length
+                  } vans`}
             </p>
+            {fixedCams.some((c) => c.source === "seed") ? (
+              <p className="mt-2 text-sm text-[var(--warn)]">
+                Using seed cameras — alerts still work offline.
+              </p>
+            ) : fixedCams.some((c) => c.source === "bundle") ? (
+              <p className="mt-2 text-sm text-[var(--muted)]">
+                OSM extract bundled with the app (works on GitHub Pages).
+              </p>
+            ) : null}
             {camError ? (
               <p className="mt-2 text-sm text-red-700">{camError}</p>
             ) : null}
