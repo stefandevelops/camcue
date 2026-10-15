@@ -32,6 +32,18 @@ body {
   border: none;
 }
 
+@keyframes camcue-pulse {
+  0% {
+    transform: scale(1);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 .leaflet-container {
   font: inherit;
   width: 100%;

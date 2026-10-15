@@ -78,3 +78,30 @@ export function speakOnce(text: string, key: string, cooldownMs = 20000) {
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utter);
 }
+
+/** Short attention beep — useful when voice is off or easy to miss. */
+export function beepOnce(key: string, cooldownMs = 8000) {
+  if (typeof window === "undefined") return;
+  const stampKey = `camcue-beep-${key}`;
+  const last = Number(sessionStorage.getItem(stampKey) || "0");
+  if (Date.now() - last < cooldownMs) return;
+  sessionStorage.setItem(stampKey, String(Date.now()));
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.value = 0.0001;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    const now = ctx.currentTime;
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+    osc.start(now);
+    osc.stop(now + 0.3);
+    osc.onended = () => void ctx.close();
+  } catch {
+    // Audio may be blocked until a user gesture — ignore.
+  }
+}

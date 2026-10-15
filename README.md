@@ -13,11 +13,12 @@
 ## Features
 
 - GPS tracking with live speed readout
-- Big on-map markers (limit number or `VAN`)
+- Oversized on-map markers (limit number or `VAN`) that pulse when nearby
 - Watch / near / critical alert bands
-- Voice nudge when a camera is ahead
+- Beep + optional voice when a camera is ahead
 - Extra reminder if GPS speed looks above the camera’s tagged limit
 - Mark a van at your current location
+- Demo route (Brussels) to try alerts without phone GPS
 
 ## Live demo
 

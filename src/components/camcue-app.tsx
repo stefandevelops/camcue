@@ -6,16 +6,19 @@ import {
   addVanReport,
   clearOldVans,
   fetchFixedCamerasAround,
-  loadVanReports,
   type SpeedCamera,
 } from "@/lib/cameras";
 import {
+  beepOnce,
   rankNearbyCameras,
   shouldWarnSpeed,
   speakOnce,
   type CameraAlert,
 } from "@/lib/alerts";
 import { formatDistance, msToKmh, type LatLng } from "@/lib/geo";
+
+/** Brussels center — dense OSM camera coverage for try-without-GPS demos. */
+const DEMO_CENTER: LatLng = { lat: 50.8503, lng: 4.3517 };
 
 const DriveMap = dynamic(
   () => import("@/components/drive-map").then((m) => m.DriveMap),
@@ -41,10 +44,11 @@ export function CamCueApp() {
   const [loadingCams, setLoadingCams] = useState(false);
   const [camError, setCamError] = useState("");
   const [voiceOn, setVoiceOn] = useState(true);
-  const [lastFetchAt, setLastFetchAt] = useState<LatLng | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const [error, setError] = useState("");
   const watchRef = useRef<number | null>(null);
   const lastFetchRef = useRef<LatLng | null>(null);
+  const demoTimerRef = useRef<number | null>(null);
 
   const cameras = useMemo(() => [...fixedCams, ...vanCams], [fixedCams, vanCams]);
 
@@ -55,6 +59,15 @@ export function CamCueApp() {
 
   const nearest = nearby[0] ?? null;
   const overLimit = shouldWarnSpeed(speedKmh, nearest);
+
+  const alertById = useMemo(() => {
+    const map: Record<string, "watch" | "near" | "critical"> = {};
+    for (const item of nearby) {
+      if (item.level === "none") continue;
+      map[item.camera.id] = item.level;
+    }
+    return map;
+  }, [nearby]);
 
   const refreshCameras = useCallback(async (at: LatLng, force = false) => {
     const prev = lastFetchRef.current;
@@ -71,7 +84,6 @@ export function CamCueApp() {
       const fixed = await fetchFixedCamerasAround(at, 9000);
       setFixedCams(fixed);
       lastFetchRef.current = at;
-      setLastFetchAt(at);
     } catch (err) {
       setCamError(
         err instanceof Error
@@ -89,29 +101,75 @@ export function CamCueApp() {
       if (watchRef.current != null) {
         navigator.geolocation.clearWatch(watchRef.current);
       }
+      if (demoTimerRef.current != null) {
+        window.clearInterval(demoTimerRef.current);
+      }
     };
   }, []);
 
   useEffect(() => {
-    if (!nearest || !voiceOn) return;
+    if (!nearest) return;
     if (nearest.level === "near" || nearest.level === "critical") {
-      const limit =
-        nearest.camera.maxspeed != null
-          ? ` Speed limit ${nearest.camera.maxspeed} kilometers per hour.`
-          : "";
-      speakOnce(
-        `${nearest.camera.kind === "van" ? "Mobile speed camera" : "Speed camera"} ahead in ${Math.round(nearest.distanceM)} meters.${limit} Check your speed.`,
-        `${nearest.camera.id}-${nearest.level}`,
-      );
+      beepOnce(`${nearest.camera.id}-${nearest.level}`);
+      if (voiceOn) {
+        const limit =
+          nearest.camera.maxspeed != null
+            ? ` Speed limit ${nearest.camera.maxspeed} kilometers per hour.`
+            : "";
+        speakOnce(
+          `${nearest.camera.kind === "van" ? "Mobile speed camera" : "Speed camera"} ahead in ${Math.round(nearest.distanceM)} meters.${limit} Check your speed.`,
+          `${nearest.camera.id}-${nearest.level}`,
+        );
+      }
     }
     if (overLimit && nearest.camera.maxspeed != null) {
-      speakOnce(
-        `You are above the camera limit. Slow down to ${nearest.camera.maxspeed}.`,
-        `overspeed-${nearest.camera.id}`,
-        15000,
-      );
+      beepOnce(`overspeed-${nearest.camera.id}`, 12000);
+      if (voiceOn) {
+        speakOnce(
+          `You are above the camera limit. Slow down to ${nearest.camera.maxspeed}.`,
+          `overspeed-${nearest.camera.id}`,
+          15000,
+        );
+      }
     }
   }, [nearest, overLimit, voiceOn]);
+
+  function stopDemo() {
+    if (demoTimerRef.current != null) {
+      window.clearInterval(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
+    setDemoMode(false);
+  }
+
+  function startDemo() {
+    if (watchRef.current != null) {
+      navigator.geolocation.clearWatch(watchRef.current);
+      watchRef.current = null;
+    }
+    stopDemo();
+    setDemoMode(true);
+    setStatus("live");
+    setError("");
+    setHeading(95);
+    setSpeedKmh(58);
+    setPosition(DEMO_CENTER);
+    void refreshCameras(DEMO_CENTER, true);
+
+    let step = 0;
+    demoTimerRef.current = window.setInterval(() => {
+      step += 1;
+      // Drift east so nearby OSM cameras move through alert bands.
+      const next = {
+        lat: DEMO_CENTER.lat + Math.sin(step / 18) * 0.0012,
+        lng: DEMO_CENTER.lng + step * 0.00022,
+      };
+      setPosition(next);
+      setSpeedKmh(48 + (step % 7) * 3);
+      setHeading(90 + Math.sin(step / 10) * 8);
+      void refreshCameras(next);
+    }, 1800);
+  }
 
   function startTracking() {
     if (!navigator.geolocation) {
@@ -119,6 +177,7 @@ export function CamCueApp() {
       setError("Geolocation is not available in this browser.");
       return;
     }
+    stopDemo();
     if (watchRef.current != null) {
       navigator.geolocation.clearWatch(watchRef.current);
     }
@@ -187,13 +246,22 @@ export function CamCueApp() {
         </div>
         <div className="flex flex-wrap gap-2">
           {status !== "live" ? (
-            <button
-              type="button"
-              onClick={() => startTracking()}
-              className="rounded-xl bg-[var(--accent)] px-4 py-2.5 font-medium text-white"
-            >
-              Start driving mode
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => startTracking()}
+                className="rounded-xl bg-[var(--accent)] px-4 py-2.5 font-medium text-white"
+              >
+                Start driving mode
+              </button>
+              <button
+                type="button"
+                onClick={() => startDemo()}
+                className="rounded-xl border border-[var(--line)] bg-white px-4 py-2.5 text-sm font-medium"
+              >
+                Try demo (Brussels)
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -210,6 +278,23 @@ export function CamCueApp() {
               >
                 Mark van here
               </button>
+              {demoMode ? (
+                <button
+                  type="button"
+                  onClick={() => startTracking()}
+                  className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
+                >
+                  Switch to live GPS
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => startDemo()}
+                  className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
+                >
+                  Demo route
+                </button>
+              )}
             </>
           )}
           <button
@@ -246,6 +331,11 @@ export function CamCueApp() {
                   ? nearest.message
                   : "No cameras in alert range — keep an eye on the map")}
             </p>
+            {demoMode ? (
+              <p className="mt-2 text-sm opacity-80">
+                Demo route in Brussels — simulating travel so you can see alerts without GPS.
+              </p>
+            ) : null}
             {overLimit ? (
               <p className="mt-2 font-semibold">
                 You may be over the nearby limit — ease off the accelerator.
@@ -265,7 +355,12 @@ export function CamCueApp() {
       <div className="grid flex-1 gap-5 lg:grid-cols-[1.4fr_0.8fr]">
         <section className="h-[55vh] min-h-[360px] overflow-hidden rounded-2xl border border-[var(--line)] bg-white shadow-sm lg:h-auto">
           {position ? (
-            <DriveMap center={position} cameras={cameras} heading={heading} />
+            <DriveMap
+              center={position}
+              cameras={cameras}
+              heading={heading}
+              alertById={alertById}
+            />
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
               <p className="font-[family-name:var(--font-display)] text-2xl">
@@ -314,8 +409,8 @@ export function CamCueApp() {
           <div className="rounded-2xl border border-[var(--line)] bg-[var(--ink)] p-4 text-white">
             <h2 className="font-[family-name:var(--font-display)] text-lg">How it helps</h2>
             <ul className="mt-3 space-y-2 text-sm text-white/80">
-              <li>· Large on-map badges (speed limit or VAN), not tiny pins</li>
-              <li>· Voice + banner when a camera is ahead</li>
+              <li>· Oversized badges that pulse when a camera is near</li>
+              <li>· Banner + beep + optional voice as you approach</li>
               <li>· Extra nudge if GPS speed looks over the posted limit</li>
               <li>· Mark a mobile van for yourself (saved in this browser)</li>
             </ul>
